@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_URL = process.env.DETECTION_API_URL || 'https://izehamm/backendapi.hf.space/';
+const API_URL = process.env.DETECTION_API_URL || 'https://izehamm-backendapi.hf.space';
 
 export async function POST(request: NextRequest) {
   try {

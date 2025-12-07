@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_URL = process.env.DETECTION_API_URL || 'https://weapon-detection.azshorizon.xyz';
+const API_URL = process.env.DETECTION_API_URL || 'https://izehamm/backendapi.hf.space/';
 
 export async function POST(request: NextRequest) {
   try {
@@ -165,7 +165,7 @@ export async function GET() {
   try {
     const response = await fetch(`${API_URL}/health`);
     const data = await response.json();
-    
+
     return NextResponse.json({
       status: 'ok',
       backend: data

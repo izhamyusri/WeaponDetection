@@ -43,6 +43,8 @@ export default function WeaponDetection() {
   const imageRef = useRef<HTMLImageElement>(null);
   const uploadedVideoRef = useRef<HTMLVideoElement>(null);
   const websocketRef = useRef<WebSocket | null>(null);
+  const lastWebhookTime = useRef<number>(0);
+  const currentFrameData = useRef<string | null>(null);
 
   // Convert image to RGB (remove alpha channel)
   const convertToRGB = async (file: File): Promise<Blob> => {
@@ -240,6 +242,49 @@ export default function WeaponDetection() {
     }
   };
 
+  // Send webhook notification with 30-second throttling
+  const sendWebhookNotification = async (detections: Detection[], imageBase64?: string) => {
+    try {
+      // Check if 30 seconds have passed since last webhook
+      const now = Date.now();
+      const timeSinceLastWebhook = now - lastWebhookTime.current;
+
+      if (timeSinceLastWebhook < 30000) {
+        console.log(`Webhook throttled. ${Math.ceil((30000 - timeSinceLastWebhook) / 1000)}s remaining`);
+        return;
+      }
+
+      console.log('Sending webhook notification with detections:', detections.length);
+
+      const payload: any = { detections };
+
+      // Add base64 image if available
+      if (imageBase64) {
+        payload.image = imageBase64;
+      } else if (currentFrameData.current) {
+        payload.image = currentFrameData.current;
+      }
+
+      const response = await fetch('/api/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        console.log('Webhook notification sent successfully');
+        lastWebhookTime.current = now; // Update last webhook time
+      } else {
+        const errorText = await response.text();
+        console.error('Webhook notification failed:', response.status, errorText);
+      }
+    } catch (error) {
+      console.error('Error sending webhook notification:', error);
+    }
+  };
+
   // Connect to WebSocket for real-time detection
   const connectWebSocket = () => {
     // Use environment variable or default to localhost
@@ -258,6 +303,13 @@ export default function WeaponDetection() {
 
         if (data.success) {
           setDetections(data.detections);
+
+          // Send webhook notification if there are detections
+          if (data.detections && data.detections.length > 0) {
+            sendWebhookNotification(data.detections).catch(err =>
+              console.error('Webhook notification failed:', err)
+            );
+          }
 
           // Draw detections on canvas
           if (canvasRef.current) {
@@ -389,6 +441,9 @@ export default function WeaponDetection() {
             const base64data = reader.result as string;
             // Remove the data:image/jpeg;base64, prefix
             const base64Image = base64data.split(',')[1];
+
+            // Store current frame data for webhook
+            currentFrameData.current = base64Image;
 
             // Send to WebSocket
             if (websocketRef.current?.readyState === WebSocket.OPEN) {

@@ -1,6 +1,99 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_URL = process.env.DETECTION_API_URL || 'https://izehamm-backendapi.hf.space';
+const API_URL = process.env.DETECTION_API_URL || 'https://khaiman-test-weapon-detection-api.hf.space';
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
+
+console.log('===== Environment Variables at Startup =====');
+console.log('API_URL:', API_URL);
+console.log('WEBHOOK_URL:', WEBHOOK_URL);
+console.log('==========================================');
+
+// Function to send webhook notification
+async function sendWebhook(detections: any[]) {
+  console.log('sendWebhook called with detections:', detections.length);
+  console.log('WEBHOOK_URL:', WEBHOOK_URL);
+
+  if (!WEBHOOK_URL) {
+    console.log('No webhook URL configured, skipping webhook notification');
+    return;
+  }
+
+  const payload = { detections };
+  console.log('Sending webhook payload:', JSON.stringify(payload, null, 2));
+
+  try {
+    const response = await fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('Webhook response status:', response.status);
+    const responseText = await response.text();
+    console.log('Webhook response body:', responseText);
+
+    if (!response.ok) {
+      console.error('Webhook call failed:', response.status, response.statusText);
+    } else {
+      console.log('Webhook notification sent successfully');
+    }
+  } catch (error) {
+    console.error('Error sending webhook:', error);
+  }
+}
+
+// Function to extract detections from response data
+function extractDetections(data: any): any[] {
+  console.log('extractDetections called with data:', JSON.stringify(data, null, 2));
+  const detections: any[] = [];
+
+  // Handle image response
+  if (data.detections && Array.isArray(data.detections)) {
+    console.log('Found image detections:', data.detections.length);
+    data.detections.forEach((det: any) => {
+      detections.push({
+        class_id: det.class_id || det.class,
+        class_name: det.class_name || det.name,
+        confidence: det.confidence,
+        bbox: det.bbox || {
+          x1: det.x1 || det.xmin,
+          y1: det.y1 || det.ymin,
+          x2: det.x2 || det.xmax,
+          y2: det.y2 || det.ymax,
+        },
+      });
+    });
+  }
+
+  // Handle video response with frames
+  if (data.frames && Array.isArray(data.frames)) {
+    console.log('Found video frames:', data.frames.length);
+    data.frames.forEach((frame: any) => {
+      if (frame.detections && Array.isArray(frame.detections)) {
+        console.log(`Frame ${frame.frame_number} has ${frame.detections.length} detections`);
+        frame.detections.forEach((det: any) => {
+          detections.push({
+            class_id: det.class_id || det.class,
+            class_name: det.class_name || det.name,
+            confidence: det.confidence,
+            bbox: det.bbox || {
+              x1: det.x1 || det.xmin,
+              y1: det.y1 || det.ymin,
+              x2: det.x2 || det.xmax,
+              y2: det.y2 || det.ymax,
+            },
+            frame_number: frame.frame_number,
+          });
+        });
+      }
+    });
+  }
+
+  console.log('Total detections extracted:', detections.length);
+  return detections;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -96,6 +189,16 @@ export async function POST(request: NextRequest) {
       // Try to parse as single JSON first
       try {
         const data = JSON.parse(responseText);
+
+        // Extract detections and send webhook
+        console.log('=== Video Detection Complete (single JSON) ===');
+        const detections = extractDetections(data);
+        console.log('Calling webhook with detections...');
+        // Always send webhook on successful detection response
+        sendWebhook(detections).catch(err =>
+          console.error('Webhook notification failed:', err)
+        );
+
         return NextResponse.json(data);
       } catch {
         // If that fails, try parsing as newline-delimited JSON
@@ -115,6 +218,15 @@ export async function POST(request: NextRequest) {
             total_frames: frames.length,
             total_detections: frames.reduce((sum, frame) => sum + (frame.count || 0), 0)
           };
+
+          // Extract detections and send webhook
+          console.log('=== Video Detection Complete (streaming) ===');
+          const detections = extractDetections(combinedResult);
+          console.log('Calling webhook with detections...');
+          // Always send webhook on successful detection response
+          sendWebhook(detections).catch(err =>
+            console.error('Webhook notification failed:', err)
+          );
 
           return NextResponse.json(combinedResult);
         } catch (parseError) {
@@ -139,6 +251,15 @@ export async function POST(request: NextRequest) {
       });
       throw new Error('Invalid JSON response from backend');
     }
+
+    // Extract detections and send webhook
+    console.log('=== Image Detection Complete ===');
+    const detections = extractDetections(data);
+    console.log('Calling webhook with detections...');
+    // Always send webhook on successful detection response
+    sendWebhook(detections).catch(err =>
+      console.error('Webhook notification failed:', err)
+    );
 
     return NextResponse.json(data);
   } catch (error) {

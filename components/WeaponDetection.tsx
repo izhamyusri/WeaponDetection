@@ -46,6 +46,9 @@ export default function WeaponDetection() {
   const lastWebhookTime = useRef<number>(0);
   const currentFrameData = useRef<string | null>(null);
 
+  // Confidence threshold
+  const CONFIDENCE_THRESHOLD = 0.55;
+
   // Convert image to RGB (remove alpha channel)
   const convertToRGB = async (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
@@ -302,11 +305,13 @@ export default function WeaponDetection() {
         const data = JSON.parse(event.data);
 
         if (data.success) {
-          setDetections(data.detections);
+          // Filter detections client-side
+          const filteredDetections = data.detections ? data.detections.filter((d: Detection) => d.confidence >= CONFIDENCE_THRESHOLD) : [];
+          setDetections(filteredDetections);
 
           // Send webhook notification if there are detections
-          if (data.detections && data.detections.length > 0) {
-            sendWebhookNotification(data.detections).catch(err =>
+          if (filteredDetections && filteredDetections.length > 0) {
+            sendWebhookNotification(filteredDetections).catch(err =>
               console.error('Webhook notification failed:', err)
             );
           }
@@ -315,7 +320,7 @@ export default function WeaponDetection() {
           if (canvasRef.current) {
             const ctx = canvasRef.current.getContext('2d');
             if (ctx && data.image_size) {
-              drawDetections(ctx, data.detections, data.image_size.width, data.image_size.height);
+              drawDetections(ctx, filteredDetections, data.image_size.width, data.image_size.height);
             }
           }
         } else if (data.error) {
@@ -449,7 +454,7 @@ export default function WeaponDetection() {
             if (websocketRef.current?.readyState === WebSocket.OPEN) {
               websocketRef.current.send(JSON.stringify({
                 image: base64Image,
-                confidence: 0.25
+                confidence: CONFIDENCE_THRESHOLD
               }));
             }
           };
@@ -469,21 +474,21 @@ export default function WeaponDetection() {
     height: number
   ) => {
     ctx.clearRect(0, 0, width, height);
-    
+
     detections.forEach((det) => {
       const { bbox, class_name, confidence } = det;
-      
+
       // Draw bounding box
       ctx.strokeStyle = '#FF0000';
       ctx.lineWidth = 3;
       ctx.strokeRect(bbox.x1, bbox.y1, bbox.x2 - bbox.x1, bbox.y2 - bbox.y1);
-      
+
       // Draw label background
       ctx.fillStyle = '#FF0000';
       const label = `${class_name} ${(confidence * 100).toFixed(1)}%`;
       const textWidth = ctx.measureText(label).width;
       ctx.fillRect(bbox.x1, bbox.y1 - 25, textWidth + 10, 25);
-      
+
       // Draw label text
       ctx.fillStyle = '#FFFFFF';
       ctx.font = '16px Arial';
@@ -564,11 +569,10 @@ export default function WeaponDetection() {
           </button>
           <button
             onClick={isWebcamActive ? stopWebcam : startWebcam}
-            className={`px-4 py-2 border-2 font-bold tracking-wide transition ${
-              isWebcamActive
+            className={`px-4 py-2 border-2 font-bold tracking-wide transition ${isWebcamActive
                 ? 'border-red-500 text-red-500 hover:bg-red-500 hover:text-black'
                 : 'border-green-500 hover:bg-green-500 hover:text-black'
-            }`}
+              }`}
           >
             {isWebcamActive ? '[STOP CAM]' : '[START CAM]'}
           </button>
@@ -781,33 +785,33 @@ export default function WeaponDetection() {
                   </div>
 
                   {videoDetectionResult.detections_by_frame &&
-                   Object.keys(videoDetectionResult.detections_by_frame).length > 0 && (
-                    <div className="mt-3 border-t border-green-500 pt-3">
-                      <div className="text-xs font-bold mb-2">FRAME DETECTIONS:</div>
-                      <div className="space-y-2 max-h-60 overflow-y-auto">
-                        {Object.entries(videoDetectionResult.detections_by_frame).map(
-                          ([frameNum, frameDetections]: [string, any]) => (
-                            <div key={frameNum} className="border-l-4 border-red-500 pl-2 bg-red-500/5 p-1">
-                              <div className="text-xs font-bold text-red-400">
-                                FRAME {frameNum}
-                              </div>
-                              {frameDetections.map((det: Detection, idx: number) => (
-                                <div
-                                  key={idx}
-                                  className="text-xs flex justify-between mt-1"
-                                >
-                                  <span className="text-green-400">{det.class_name}</span>
-                                  <span className="text-red-500 font-bold">
-                                    {(det.confidence * 100).toFixed(1)}%
-                                  </span>
+                    Object.keys(videoDetectionResult.detections_by_frame).length > 0 && (
+                      <div className="mt-3 border-t border-green-500 pt-3">
+                        <div className="text-xs font-bold mb-2">FRAME DETECTIONS:</div>
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                          {Object.entries(videoDetectionResult.detections_by_frame).map(
+                            ([frameNum, frameDetections]: [string, any]) => (
+                              <div key={frameNum} className="border-l-4 border-red-500 pl-2 bg-red-500/5 p-1">
+                                <div className="text-xs font-bold text-red-400">
+                                  FRAME {frameNum}
                                 </div>
-                              ))}
-                            </div>
-                          )
-                        )}
+                                {frameDetections.map((det: Detection, idx: number) => (
+                                  <div
+                                    key={idx}
+                                    className="text-xs flex justify-between mt-1"
+                                  >
+                                    <span className="text-green-400">{det.class_name}</span>
+                                    <span className="text-red-500 font-bold">
+                                      {(det.confidence * 100).toFixed(1)}%
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
               )}
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_URL = process.env.DETECTION_API_URL || 'https://khaiman-test-weapon-detection-api.hf.space';
+const API_URL = process.env.DETECTION_API_URL || 'https://wd-api.azshorizon.xyz';
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
 console.log('===== Environment Variables at Startup =====');
